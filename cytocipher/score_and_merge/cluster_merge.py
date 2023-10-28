@@ -427,6 +427,7 @@ def run_enrich(data: sc.AnnData, groupby: str, enrich_method: str,
 # The key function #
 def merge_clusters(data: sc.AnnData, groupby: str,
                    var_groups: str=None, n_top_genes: int = 6, t_cutoff: int=3,
+                   method: str = 'logreg', lr_max_iter: int = 1000, n_jobs: int = 1, # Added for logistic regression option
                    marker_padj_cutoff: float=.05, gene_order: str=None,
                    min_de: int=1,
                    enrich_method: str = 'code', p_cut: float=0.01,
@@ -531,10 +532,13 @@ def merge_clusters(data: sc.AnnData, groupby: str,
     if verbose:
         print( "Initial merge." )
 
-    get_markers(data, groupby, n_top=n_top_genes, verbose=False,
+    get_markers(data, groupby, n_top=n_top_genes,
+                method=method, max_iter=lr_max_iter, n_jobs=n_jobs, # Added for logistic regression option
+                verbose=False,
                 var_groups=var_groups, t_cutoff=t_cutoff,
                 padj_cutoff=marker_padj_cutoff,
                 gene_order=gene_order, min_de=min_de)
+        
     run_enrich(data, groupby, enrich_method, n_cpus,
                squash_exception=squash_exception)
 
@@ -552,9 +556,11 @@ def merge_clusters(data: sc.AnnData, groupby: str,
 
         # Running marker gene determination #
         get_markers(data, f'{groupby}_merged', n_top=n_top_genes,
-                       verbose=False, var_groups=var_groups, t_cutoff=t_cutoff,
-                        padj_cutoff=marker_padj_cutoff,
-                        gene_order=gene_order, min_de=min_de)
+            method=method, max_iter=lr_max_iter, n_jobs=n_jobs, # Added for logistic regression option
+            verbose=False,
+            var_groups=var_groups, t_cutoff=t_cutoff,
+            padj_cutoff=marker_padj_cutoff,
+            gene_order=gene_order, min_de=min_de)
 
         # Running the enrichment scoring #
         run_enrich(data, f'{groupby}_merged', enrich_method, n_cpus,
@@ -583,10 +589,12 @@ def merge_clusters(data: sc.AnnData, groupby: str,
 
     ## Reached max iter, exit with current solution ##
     # Running marker gene determination #
-    get_markers(data, f'{groupby}_merged', n_top=n_top_genes, verbose=False,
-                var_groups=var_groups, t_cutoff=t_cutoff,
-                padj_cutoff=marker_padj_cutoff,
-                gene_order=gene_order, min_de=min_de)
+    get_markers(data, f'{groupby}_merged', n_top=n_top_genes,
+        method=method, max_iter=lr_max_iter, n_jobs=n_jobs, # Added for logistic regression option
+        verbose=False,
+        var_groups=var_groups, t_cutoff=t_cutoff,
+        padj_cutoff=marker_padj_cutoff,
+        gene_order=gene_order, min_de=min_de)
 
     # Running the enrichment scoring #
     run_enrich(data, f'{groupby}_merged', enrich_method, n_cpus,

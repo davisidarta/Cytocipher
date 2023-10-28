@@ -734,12 +734,13 @@ def coexpr_specificity_score(data: sc.AnnData, groupby: str,
                         # Currently not in use #
 ################################################################################
 def get_markers(data: sc.AnnData, groupby: str,
-                var_groups: str = None,
+                var_groups: str = None, method: str = 'logreg',
+                max_iter: int = 1000, n_jobs: int = 1,
                 logfc_cutoff: float = 0, padj_cutoff: float = .05,
                 t_cutoff: float=3,
                 n_top: int = 5, rerun_de: bool = True, gene_order=None,
                 pts: bool=False, min_de: int=1,
-                verbose: bool = True):
+                verbose: bool = True, **kwds):
     """ Gets marker genes per cluster.
 
     Parameters
@@ -757,6 +758,12 @@ def get_markers(data: sc.AnnData, groupby: str,
             the candidate genes to use when determining marker genes per cluster.
             Useful to, for example, remove ribosomal and mitochondrial genes.
             None indicates use all genes in data.var_names as candidates.
+        method: str
+            Options are 'logreg', 't-test', 'wilcoxon', 't-test_overestim_var'.
+        max_iter: int
+            Maximum number of iterations for logistic regression (default 1000).
+        n_jobs: int
+            Number of processing threads to use for logistic regression solver (default 1).
         logfc_cutoff: float
             Minimum logfc for a gene to be a considered a marker gene for a
             given cluster.
@@ -783,6 +790,8 @@ def get_markers(data: sc.AnnData, groupby: str,
             Minimum number of genes to use as markers, if criteria met.
         verbose: bool
             Print statements during computation (True) or silent run (False).
+        **kwds: dict
+            Additional keyword arguments to use when method is 'logreg'.
         Returns
         --------
             data.uns[f'{groupby}_markers']
@@ -805,8 +814,8 @@ def get_markers(data: sc.AnnData, groupby: str,
             data_sub.obs[groupby] = data_sub.obs[groupby].astype('category')
             data_sub.var_names = data.var_names.values[genes_bool]
 
-            sc.tl.rank_genes_groups(data_sub, groupby=groupby, use_raw=False,
-                                    pts=pts)
+            sc.tl.rank_genes_groups(data_sub, groupby=groupby, use_raw=False, pts=pts, method=method, max_iter=max_iter, n_jobs=n_jobs,  **kwds)
+
             data.uns['rank_genes_groups'] = data_sub.uns['rank_genes_groups']
         else:
             sc.tl.rank_genes_groups(data, groupby=groupby, use_raw=False,
@@ -815,19 +824,22 @@ def get_markers(data: sc.AnnData, groupby: str,
     #### Getting marker genes for each cluster...
     genes_rank = pd.DataFrame(data.uns['rank_genes_groups']['names'])
     tvals_rank = pd.DataFrame(data.uns['rank_genes_groups']['scores'])
-    logfcs_rank = pd.DataFrame(data.uns['rank_genes_groups']['logfoldchanges'])
-    padjs_rank = pd.DataFrame(data.uns['rank_genes_groups']['pvals_adj'])
-
-    up_bool = np.logical_and(logfcs_rank.values > logfc_cutoff,
-                             padjs_rank.values < padj_cutoff)
-    up_bool = np.logical_and(up_bool, tvals_rank.values > t_cutoff)
+    up_bool = tvals_rank.values > t_cutoff
+    if method != 'logreg':
+        logfcs_rank = pd.DataFrame(data.uns['rank_genes_groups']['logfoldchanges'])
+        padjs_rank = pd.DataFrame(data.uns['rank_genes_groups']['pvals_adj'])
+        up_bool = np.logical_and(logfcs_rank.values > logfc_cutoff,
+                                padjs_rank.values < padj_cutoff)
 
     cluster_genes = {}
     for i, cluster in enumerate(genes_rank.columns):
         up_indices = np.where(up_bool[:, i])[0]
-        if gene_order == 'logfc':
-            order = np.argsort(-logfcs_rank.values[up_indices, i])
-            up_rank = up_indices[order[0:n_top]]
+        if method != 'logreg':
+            if gene_order == 'logfc':
+                order = np.argsort(-logfcs_rank.values[up_indices, i])
+                up_rank = up_indices[order[0:n_top]]
+            else:
+                up_rank = up_indices[0:n_top]
         else:
             up_rank = up_indices[0:n_top]
 
@@ -839,6 +851,8 @@ def get_markers(data: sc.AnnData, groupby: str,
     data.uns[f'{groupby}_markers'] = cluster_genes
     if verbose:
         print(f"Added data.uns['{groupby}_markers']")
+        
+    
 
 ################################################################################
  # Methods for normalizing scores and assigning to cell type based on score #
